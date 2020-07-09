@@ -16,7 +16,11 @@
 #include <librealsense2/rs.hpp>
 #endif
 
+#include "target.h"
+#include "targetTrack.h"
 #include "trackBox.h"
+
+#include <glib.h>
 
 using namespace std;
 using namespace cv;
@@ -26,7 +30,9 @@ enum SourceType{
   PNG_IMG,
   MP4_VID,
   V4L2_VID,
-  REALSENSE
+  REALSENSE,
+  IMAGE_SEQUENCE,
+  VIDEO_SEQUENCE
 };
 
 Rect selection(0, 0, 0, 0);
@@ -56,6 +62,10 @@ std::string GetCameraPipeline(){
             "appsink ";
 
   return pipeline;
+}
+
+void GetNextSequenceImage(){
+  
 }
 
 static void onMouse(int event, int x, int y, int, void *user_data){
@@ -94,6 +104,7 @@ int main(int argc, char **argv){
   int index;
   int c;
   TrackBox trackBox;
+  GList *targets = NULL;
 
   enum SourceType source_type = V4L2_VID;
 
@@ -177,6 +188,10 @@ int main(int argc, char **argv){
     case MP4_VID:
       break;  
     case V4L2_VID:
+      cap.open(GetCameraPipeline());
+      if(!cap.isOpened()){
+        cout << "Failed to open video capture pipeline" << endl;
+      }
       break;
     case REALSENSE:
 #ifdef WITH_REALSENSE
@@ -190,6 +205,8 @@ int main(int argc, char **argv){
       }
 #endif
       break;
+    case IMAGE_SEQUENCE:
+    case VIDEO_SEQUENCE:
     default:
       break;
   }
@@ -215,6 +232,8 @@ int main(int argc, char **argv){
     case MP4_VID:
       break;  
     case V4L2_VID:
+      cap >> input_frame;
+      break;
     case REALSENSE:
 #ifdef WITH_REALSENSE
       data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
@@ -248,9 +267,18 @@ int main(int argc, char **argv){
       hue.create(hsv.size(), hsv.depth());
       int ch[] = {0, 0};
       mixChannels(&hsv, 1, &hue, 1, ch, 1);
+
       if(new_selection < 0){
         Mat roi(hue, selection), mask_roi(selection_mask, selection);
-        trackBox.GetTrackBox(input_frame(selection));
+        trackBox.GetTrackBoxes(input_frame(selection), &targets);
+        cout << "starting new track" << endl;
+        // GList *li;
+        // for(li = targets; li != NULL; li = li->next){
+        //   Target *target  = (Target*)li->data;
+        //   cout << target->GetROI() << endl;
+        // }
+        // cout << "track object " << track_object_0->GetROI() << endl;
+        //tracker0.StartNewTrack(track_object_0, input_frame);
         new_selection = 1;
       }
 
@@ -260,6 +288,7 @@ int main(int argc, char **argv){
       Mat roi(input_frame, selection);
       bitwise_not(roi, roi);
     }
+
 
     imshow("TrackBox", input_frame);
     waitKey(33);
