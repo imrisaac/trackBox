@@ -4,7 +4,7 @@ using namespace std;
 using namespace cv;
 
 TrackBoxParams::TrackBoxParams(){
-  edgeboxes_max_num = 5;
+  edgeboxes_max_num = 1;
   edgeboxes_max_dist_from_center = 1000;
   edgeboxes_min_box_area = 1000;
   edgeboxes_min_box_aspect_ratio = 3;
@@ -48,26 +48,18 @@ void TrackBox::StructuredEdgeDetection(cv::InputArray src, cv::OutputArray dst){
   boxes_.clear();
   targets_ = NULL;
 
-  cout << "run sedge" << endl;
   sedge_->detectEdges(rgb_im, edge_im);
   Mat orin;
-  cout << "compute orientation" << endl;
   sedge_->computeOrientation(edge_im, orin);
   Mat edge_nms;
   sedge_->edgesNms(edge_im, orin, edge_nms);
-  cout << "compute edgeboxes" << endl;
   edgeboxes_->setMinScore(0.01);
   edgeboxes_->getBoundingBoxes(edge_nms, orin, boxes_);
 
   Point2f sigma_pos;
   Point2f sigma_sizzle;
   Point2f sigma_area;
-  cout << "compute standard dev" << endl;
   StandardDeviationRectVector(boxes_, sigma_pos, sigma_sizzle, sigma_area);
-
-  cout << "Mean position " << sigma_pos << endl;
-  cout << "Mean size     " << sigma_sizzle << endl;
-  cout << "Mean area     " << sigma_area << endl;
 
   Point2f pos_filter = sigma_pos * 2;
   Point2f sizzle_filter = sigma_sizzle * 2;
@@ -100,7 +92,6 @@ void TrackBox::StructuredEdgeDetection(cv::InputArray src, cv::OutputArray dst){
   // list final boxes
   for(int i = 0; i < (int)g_list_length(targets_); i++){
     Target *t = (Target*)g_list_nth_data(targets_, i);
-    cout << "remaning boxes" << t->GetROI() << endl;
   }
 
   DrawViz(src.getMat());

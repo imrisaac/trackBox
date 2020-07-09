@@ -27,7 +27,8 @@ void Target::SetROI(cv::Rect roi){
 }
 
 void Target::SetROIOffset(cv::Rect2d offset){
-  roi_ = roi_ + offset;
+  roi_.x = roi_.x + offset.x;
+  roi_.y = roi_.y + offset.y; 
 }
 
 void Target::SetMaxSize(cv::Rect max_size){

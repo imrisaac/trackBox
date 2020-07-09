@@ -272,9 +272,11 @@ int main(int argc, char **argv){
         Mat roi(hue, selection), mask_roi(selection_mask, selection);
         trackBox.GetTrackBoxes(input_frame(selection), &targets);
         cout << "starting new tracks " << g_list_length(targets) << endl;
+        Rect2d roi_offset = Rect2d(selection.x, selection.y, 0, 0);
         GList *li;
         for(li = targets; li != NULL; li = li->next){
           Target *target  = (Target*)li->data;
+          target->SetROIOffset(roi_offset);
           cout << "track init: " << target->TargetTrackInit(input_frame) << endl;
         }
         new_selection = 1;
@@ -291,6 +293,7 @@ int main(int argc, char **argv){
     for(li = targets; li != NULL; li = li->next){
       Target *target  = (Target*)li->data;
       target->TargetTrackUpdate(input_frame);
+      imshow("Target", input_frame(target->GetROI()));
       target->DrawViz(input_frame);
     }
     
