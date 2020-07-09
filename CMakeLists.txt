@@ -19,12 +19,13 @@ include_directories(${OpenCV_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}
                     ${GLIB_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}/src
+                    ${PROJECT_SOURCE_DIR}/src/trackBox
                     ${PROJECT_SOURCE_DIR}/src/target
                     ${PROJECT_SOURCE_DIR}/src/targetTrack)
 
 add_executable(trackBox src/main.cpp
-                        src/target.cpp
-                        src/trackBox.cpp
+                        src/target/target.cpp
+                        src/trackBox/trackBox.cpp
                         src/targetTrack/targetTrack.cpp
                         )
 

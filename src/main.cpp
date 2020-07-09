@@ -301,7 +301,6 @@ int main(int argc, char **argv){
     waitKey(33);
   }
 
-
   cout << "end" << endl;
   return 0;
 }
