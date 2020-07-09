@@ -4,12 +4,12 @@ using namespace std;
 using namespace cv;
 
 TrackBoxParams::TrackBoxParams(){
-  edgeboxes_max_num = 10;
+  edgeboxes_max_num = 5;
   edgeboxes_max_dist_from_center = 1000;
   edgeboxes_min_box_area = 1000;
   edgeboxes_min_box_aspect_ratio = 3;
   favored_box_size = Rect(0, 0, 100, 100);
-  maximum_box_size = Rect(0, 0, 100, 100);
+  maximum_box_size = Rect(0, 0, 150, 150);
   maximum_box_size_factor = 4;
 }
 
@@ -82,12 +82,13 @@ void TrackBox::StructuredEdgeDetection(cv::InputArray src, cv::OutputArray dst){
 
   int total_found = g_list_length(targets_);
 
-  // remove oversize boxes
+  // remove oversize and overly intersected boxes
   GList *l = targets_;
   while (l != NULL){
     GList *next = l->next;
     Target *t = (Target*)l->data;
-    if (t->IsOversize()){
+    CheckIntersections(l);
+    if (t->IsOversize() || t->IsIntersected()){
       targets_ = g_list_delete_link (targets_, l);
     }
     l = next;
@@ -180,4 +181,26 @@ void TrackBox::StandardDeviationRectVector(std::vector<cv::Rect> &points,
   }
 
   StandardDeviationPointVector(boxes_area, sigma_area);
+}
+
+bool TrackBox::CheckIntersections(GList *target){
+  Target *tt = (Target*)target->data;
+
+  GList *l = targets_;
+  while (l != NULL){
+    GList *next = l->next;
+    Target *t = (Target*)l->data;
+    cout << "checking intersection" << endl;
+    int i_area = (tt->GetROI() & t->GetROI()).area();
+    int t_area = t->GetROI().area();
+    float cut = t_area * 0.1f;
+    cout << "intersection area " << i_area << endl;
+    if( i_area > 0 && i_area != t_area){
+      cout << "intersection found" << endl;
+      t->SetIntersected();
+    }
+
+    l = next;
+  }
+  cout << "iter chexk complete" << endl;
 }

@@ -17,7 +17,7 @@ class TargetTrack{
 public:
   TargetTrack();
   bool Init(cv::InputArray frame, const cv::Rect2d &bounding_box);
-  bool Update(cv::InputArray image, cv::Rect2d& boundingBox);
+  bool Update(cv::InputArray frame, cv::Rect2d &bounding_box);
 
 private:
   cv::Ptr<cv::Tracker> tracker_;

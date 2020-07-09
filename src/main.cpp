@@ -271,14 +271,12 @@ int main(int argc, char **argv){
       if(new_selection < 0){
         Mat roi(hue, selection), mask_roi(selection_mask, selection);
         trackBox.GetTrackBoxes(input_frame(selection), &targets);
-        cout << "starting new track" << endl;
-        // GList *li;
-        // for(li = targets; li != NULL; li = li->next){
-        //   Target *target  = (Target*)li->data;
-        //   cout << target->GetROI() << endl;
-        // }
-        // cout << "track object " << track_object_0->GetROI() << endl;
-        //tracker0.StartNewTrack(track_object_0, input_frame);
+        cout << "starting new tracks " << g_list_length(targets) << endl;
+        GList *li;
+        for(li = targets; li != NULL; li = li->next){
+          Target *target  = (Target*)li->data;
+          cout << "track init: " << target->TargetTrackInit(input_frame) << endl;
+        }
         new_selection = 1;
       }
 
@@ -289,7 +287,13 @@ int main(int argc, char **argv){
       bitwise_not(roi, roi);
     }
 
-
+    GList *li;
+    for(li = targets; li != NULL; li = li->next){
+      Target *target  = (Target*)li->data;
+      target->TargetTrackUpdate(input_frame);
+      target->DrawViz(input_frame);
+    }
+    
     imshow("TrackBox", input_frame);
     waitKey(33);
   }

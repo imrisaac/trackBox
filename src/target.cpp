@@ -4,14 +4,18 @@ using namespace std;
 using namespace cv;
 
 Target::Target(){
-  origin_ = Point(0, 0);
-  roi_ = Rect(0, 0, 0, 0);
+  Init(Rect(0, 0, 0, 0), Point(0, 0), cv::Rect(99999, 99999, 99999, 99999));
 }
 
 Target::Target(cv::Rect roi, cv::Point origin, cv::Rect max_size){
+  Init(roi, origin, max_size);
+}
+
+void Target::Init(cv::Rect roi, cv::Point origin, cv::Rect max_size){
   origin_ = origin;
   roi_ = roi;
   max_size_ = max_size;
+  intersection_count_ = 0;
 }
 
 void Target::SetOrigin(cv::Point origin){
@@ -20,6 +24,10 @@ void Target::SetOrigin(cv::Point origin){
 
 void Target::SetROI(cv::Rect roi){
   roi_ = roi;
+}
+
+void Target::SetROIOffset(cv::Rect2d offset){
+  roi_ = roi_ + offset;
 }
 
 void Target::SetMaxSize(cv::Rect max_size){
@@ -34,7 +42,28 @@ bool Target::IsOversize(){
 }
 
 bool Target::IsIntersected(){
+  cout << "intersection count " << intersection_count_ << endl;
+  if(intersection_count_ > 2){
+    cout << "remove" << endl;
+    return true;
+  }
+  return false;
+}
 
+bool Target::TargetTrackInit(cv::InputArray frame){
+  return track_.Init(frame, roi_);
+}
+
+bool Target::TargetTrackUpdate(cv::InputArray frame){
+  return track_.Update(frame, roi_);
+}
+
+void Target::DrawViz(cv::InputArray &frame){
+  rectangle(frame.getMat(), roi_.tl(), roi_.br(), Scalar(255, 0, 0), 2);
+}
+
+bool Target::SetIntersected(){
+  intersection_count_ ++;
 }
 
 cv::Point Target::GetOrigin(){

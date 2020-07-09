@@ -56,6 +56,8 @@ private:
   void StandardDeviationRectVector(std::vector<cv::Rect> &points, 
       cv::Point2f &sigma_pos, cv::Point2f &sigma_size, cv::Point2f &sigma_area);
   
+  bool CheckIntersections(GList *target);
+
   TrackBoxParams params_;
   cv::Mat rgb_frame_;
   cv::Mat gray_frame_;
