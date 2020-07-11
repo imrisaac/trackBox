@@ -19,8 +19,11 @@
 #include "target.h"
 #include "targetTrack.h"
 #include "trackBox.h"
+#include "motionDeblur.h"
+#include "lowPassFilter.hpp"
 
 #include <glib.h>
+#include <algorithm>
 
 using namespace std;
 using namespace cv;
@@ -39,8 +42,18 @@ Rect selection(0, 0, 0, 0);
 Point selection_origin(0, 0);
 int new_selection = 0;
 bool selectObject = false;
+MotionDeblur motionDeblur;
 
-std::string GetCameraPipeline(){
+// kf
+int kf_stateSize = 6;
+int kf_measSize = 4;
+int kf_contrSize = 0;
+unsigned int kf_type = CV_32F;
+KalmanFilter kf(kf_stateSize, kf_measSize, 0, kf_type);
+cv::Mat state(kf_stateSize, 1, kf_type);  // [x,y,v_x,v_y,w,h]
+cv::Mat meas(kf_measSize, 1, kf_type);    // [z_x,z_y,z_w,z_h]
+
+std::string GetCameraPipeline(std::string video_device = "/dev/video0"){
   string pipeline;
   // pipeline = "nvarguscamerasrc ! " 
   //           "video/x-raw(memory:NVMM), " 
@@ -55,11 +68,12 @@ std::string GetCameraPipeline(){
   //               "format=(string)BGR ! " 
   //           "appsink ";
 
-  pipeline = "v4l2src ! " 
-            "videoconvert ! " 
-            "video/x-raw, " 
-                "format=BGR ! " 
-            "appsink ";
+  pipeline = "v4l2src "
+                "device="+ video_device +" ! "
+             "videoconvert ! " 
+             "video/x-raw, " 
+                 "format=BGR ! " 
+             "appsink ";
 
   return pipeline;
 }
@@ -103,14 +117,38 @@ int main(int argc, char **argv){
   char *cvalue = NULL;
   int index;
   int c;
+  bool mirror = false;
   TrackBox trackBox;
   GList *targets = NULL;
+  LowPassFilterInt lpf_x(0.01, 30);
+  LowPassFilterInt lpf_y(0.01, 30);
+
+  // Transition state matrix A
+  cv::setIdentity(kf.transitionMatrix);
+
+  // measure matrix H
+  kf.measurementMatrix = cv::Mat::zeros(kf_measSize, kf_stateSize, kf_type);
+  kf.measurementMatrix.at<float>(0) = 1.0f;
+  kf.measurementMatrix.at<float>(7) = 1.0f;
+  kf.measurementMatrix.at<float>(16) = 1.0f;
+  kf.measurementMatrix.at<float>(23) = 1.0f;
+
+  // process noise coveriance matrix Q
+  kf.processNoiseCov.at<float>(0) = 1e-2;
+  kf.processNoiseCov.at<float>(7) = 1e-2;
+  kf.processNoiseCov.at<float>(14) = 5.0f;
+  kf.processNoiseCov.at<float>(21) = 5.0f;
+  kf.processNoiseCov.at<float>(28) = 1e-2;
+  kf.processNoiseCov.at<float>(35) = 1e-2;
+
+  // Measures Noise Covariance Matrix R
+  cv::setIdentity(kf.measurementNoiseCov, cv::Scalar(1e-1));
 
   enum SourceType source_type = V4L2_VID;
 
   opterr = 0;
 
-  while ((c = getopt (argc, argv, "i:bc:")) != -1){
+  while ((c = getopt (argc, argv, "i:bc:m")) != -1){
     switch(c){
       case 'i':
         input_type_flag = 1;
@@ -121,6 +159,9 @@ int main(int argc, char **argv){
         break;
       case 'c':
         cvalue = optarg;
+        break;
+      case 'm':
+        mirror = true;
         break;
       case '?':
         break;
@@ -186,9 +227,10 @@ int main(int argc, char **argv){
       input_frame = imread(input_type_value);
       break;
     case MP4_VID:
+      cap.open(input_type_value);
       break;  
     case V4L2_VID:
-      cap.open(GetCameraPipeline());
+      cap.open(GetCameraPipeline(input_type_value));
       if(!cap.isOpened()){
         cout << "Failed to open video capture pipeline" << endl;
       }
@@ -222,38 +264,52 @@ int main(int argc, char **argv){
 
   Mat selection_mask = Mat::zeros(200, 320, CV_8UC3);
 
+  double ticks = 0;
+
+
   while(1){
 
-  // frame capture
-  switch(source_type){
-    case JPG_IMG:
-    case PNG_IMG:
-      break;
-    case MP4_VID:
-      break;  
-    case V4L2_VID:
-      cap >> input_frame;
-      break;
-    case REALSENSE:
-#ifdef WITH_REALSENSE
-      data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
-      depth = data.get_color_frame().apply_filter(color_map);
+    double precTick = ticks;
+    ticks = (double) cv::getTickCount();
 
-      // Query frame size (width and height)
-      w = depth.as<rs2::video_frame>().get_width();
-      h = depth.as<rs2::video_frame>().get_height();
+    double dT = (ticks - precTick) / cv::getTickFrequency(); //seconds
 
-      // Create OpenCV matrix of size (w,h) from the colorized depth data
-      input_frame =  Mat(Size(w, h), CV_8UC3, (void*)depth.get_data(), Mat::AUTO_STEP);
-#endif
-      break;
-    default:
-      break;
+    // frame capture
+    switch(source_type){
+      case JPG_IMG:
+      case PNG_IMG:
+        break;
+      case MP4_VID:
+        cap >> input_frame;
+        break;  
+      case V4L2_VID:
+        cap >> input_frame;
+        break;
+      case REALSENSE:
+  #ifdef WITH_REALSENSE
+        data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
+        depth = data.get_color_frame().apply_filter(color_map);
+
+        // Query frame size (width and height)
+        w = depth.as<rs2::video_frame>().get_width();
+        h = depth.as<rs2::video_frame>().get_height();
+
+        // Create OpenCV matrix of size (w,h) from the colorized depth data
+        input_frame =  Mat(Size(w, h), CV_8UC3, (void*)depth.get_data(), Mat::AUTO_STEP);
+  #endif
+        break;
+      default:
+        break;
     }
 
     if(input_frame.empty()){
       cout << "empty frame" << endl;
       break;
+    }
+
+    // mirror for usability
+    if(mirror){
+      flip(input_frame, input_frame, +1);
     }
 
     // selection viz
@@ -280,6 +336,22 @@ int main(int argc, char **argv){
           cout << "track init: " << target->TargetTrackInit(input_frame) << endl;
         }
         new_selection = 1;
+
+        kf.errorCovPre.at<float>(0) = 1; // px
+        kf.errorCovPre.at<float>(7) = 1; // px
+        kf.errorCovPre.at<float>(14) = 1;
+        kf.errorCovPre.at<float>(21) = 1;
+        kf.errorCovPre.at<float>(28) = 1; // px
+        kf.errorCovPre.at<float>(35) = 1; // px
+
+        state.at<float>(0) = meas.at<float>(0);
+        state.at<float>(1) = meas.at<float>(1);
+        state.at<float>(2) = 0;
+        state.at<float>(3) = 0;
+        state.at<float>(4) = meas.at<float>(2);
+        state.at<float>(5) = meas.at<float>(3);
+        kf.statePost = state;
+
       }
 
     }
@@ -293,8 +365,44 @@ int main(int argc, char **argv){
     for(li = targets; li != NULL; li = li->next){
       Target *target  = (Target*)li->data;
       target->TargetTrackUpdate(input_frame);
-      imshow("Target", input_frame(target->GetROI()));
+      Rect2d target_roi = target->GetROI();
+
+      target_roi.x = lpf_x.apply(target_roi.x);
+      target_roi.y = lpf_y.apply(target_roi.y);
+
+      if(target_roi.x + target_roi.width < input_frame.cols
+          && target_roi.x > 0 
+          && target_roi.y + target_roi.height < input_frame.rows
+          && target_roi.y > 0){
+        Mat target_crop = input_frame(target_roi);
+        //motionDeblur.Deblur(target_crop, target_crop);
+        resize(target_crop, target_crop, Size(), 4.0, 4.0, INTER_CUBIC);
+        imshow("Target", target_crop);
+      }
+
       target->DrawViz(input_frame);
+
+      kf.transitionMatrix.at<float>(2) = dT;
+      kf.transitionMatrix.at<float>(9) = dT;
+      state = kf.predict();
+
+      cv::Point center;
+      center.x = state.at<float>(0);
+      center.y = state.at<float>(1);
+
+      cv::Rect predRect;
+      predRect.width = state.at<float>(4);
+      predRect.height = state.at<float>(5);
+      predRect.x = state.at<float>(0) - predRect.width / 2;
+      predRect.y = state.at<float>(1) - predRect.height / 2;
+      cv::rectangle(input_frame, predRect, CV_RGB(255,0,0), 2);
+
+      meas.at<float>(0) = target_roi.x + target_roi.width / 2;
+      meas.at<float>(1) = target_roi.y + target_roi.height / 2;
+      meas.at<float>(2) = (float)target_roi.width;
+      meas.at<float>(3) = (float)target_roi.height;
+
+      kf.correct(meas); // Kalman Correction
     }
     
     imshow("TrackBox", input_frame);

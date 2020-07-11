@@ -19,6 +19,9 @@ include_directories(${OpenCV_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}
                     ${GLIB_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}/src
+                    ${PROJECT_SOURCE_DIR}/src/utils
+                    ${PROJECT_SOURCE_DIR}/src/utils/filters
+                    ${PROJECT_SOURCE_DIR}/src/motionDeblur
                     ${PROJECT_SOURCE_DIR}/src/trackBox
                     ${PROJECT_SOURCE_DIR}/src/target
                     ${PROJECT_SOURCE_DIR}/src/targetTrack)
@@ -27,6 +30,9 @@ add_executable(trackBox src/main.cpp
                         src/target/target.cpp
                         src/trackBox/trackBox.cpp
                         src/targetTrack/targetTrack.cpp
+                        src/motionDeblur/motionDeblur.cpp
+                        src/utils/filters/lowPassFilter.cpp
+                        src/utils/mathHelpers.cpp
                         )
 
 target_link_libraries(trackBox ${OpenCV_LIBS} ${realsense2_LIBRARY} ${GLIB_LDFLAGS})

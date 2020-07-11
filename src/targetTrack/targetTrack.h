@@ -12,7 +12,6 @@
 #include <iostream>
 #include <glib.h>
 
-
 class TargetTrack{
 public:
   TargetTrack();
