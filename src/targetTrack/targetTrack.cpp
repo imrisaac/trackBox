@@ -6,7 +6,13 @@ using namespace cv;
 
 TargetTrack::TargetTrack(){
   is_init_ = false;
-  tracker_ = TrackerCSRT::create();
+  TrackerCSRT::Params params;
+  params.use_gray = false;
+  params.use_rgb = true;
+  params.use_hog = true;
+  params.template_size = 200;
+  tracker_ = TrackerCSRT::create(params);
+  //tracker_ = TrackerGOTURN::create();
 }
 
 bool TargetTrack::Init(cv::InputArray frame, const cv::Rect2d &bounding_box){
