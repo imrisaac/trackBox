@@ -10,6 +10,7 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/video/video.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/viz/types.hpp>
 
 #define WITH_REALSENSE
 #ifdef WITH_REALSENSE
@@ -24,6 +25,8 @@
 
 #include <glib.h>
 #include <algorithm>
+
+#define ARC_SECS_PER_RADIAN 206265
 
 using namespace std;
 using namespace cv;
@@ -120,8 +123,8 @@ int main(int argc, char **argv){
   bool mirror = false;
   TrackBox trackBox;
   GList *targets = NULL;
-  LowPassFilterInt lpf_x(0.01, 30);
-  LowPassFilterInt lpf_y(0.01, 30);
+  LowPassFilterInt lpf_x(2.01, 30);
+  LowPassFilterInt lpf_y(2.01, 30);
 
   // Transition state matrix A
   cv::setIdentity(kf.transitionMatrix);
@@ -213,6 +216,11 @@ int main(int argc, char **argv){
   VideoCapture cap;
   Mat input_frame;
 
+  float sensor_pixel_pitch_x;
+  float sensor_pixel_pitch_y;
+  float lens_focal_length;
+  Point2f plate_scale;
+
 #ifdef WITH_REALSENSE
   rs2::colorizer color_map;
   rs2::pipeline pipe;
@@ -228,6 +236,12 @@ int main(int argc, char **argv){
       break;
     case MP4_VID:
       cap.open(input_type_value);
+      // binned mode, pixels are double size
+      sensor_pixel_pitch_x = 1.4 * 2;
+      sensor_pixel_pitch_y = sensor_pixel_pitch_x;
+      lens_focal_length = 1.88;
+      plate_scale = Point2f((ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length,
+                            (ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length);
       break;  
     case V4L2_VID:
       cap.open(GetCameraPipeline(input_type_value));
@@ -238,6 +252,7 @@ int main(int argc, char **argv){
     case REALSENSE:
 #ifdef WITH_REALSENSE
       cout << "configuring realsense input" << endl;
+      // half res 2x2 binned
       cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
       pipe.start(cfg);
       // Camera warmup - dropping several first frames to let auto-exposure stabilize
@@ -245,6 +260,12 @@ int main(int argc, char **argv){
         //Wait for all configured streams to produce a frame
         frames = pipe.wait_for_frames();
       }
+      // binned mode, pixels are double size
+      sensor_pixel_pitch_x = 1.4 * 2;
+      sensor_pixel_pitch_y = sensor_pixel_pitch_x;
+      lens_focal_length = 1.88;
+      plate_scale = Point2f((ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length,
+                            (ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length);
 #endif
       break;
     case IMAGE_SEQUENCE:
@@ -262,16 +283,24 @@ int main(int argc, char **argv){
 
   setMouseCallback("TrackBox", onMouse, &input_frame);
 
+  viz::Viz3d myWindow("Coordinate Frame");
+  // the origin visulization if you will
+  //myWindow.showWidget("Coordinate Frame", viz::WCoordinateSystem());
+  Vec3f cam_pos(3.0f,3.0f,3.0f); 
+  Vec3f cam_focal_point(0.0f,0.0f,0.0f); 
+  Vec3f cam_y_dir(1.0f,0.0f,0.0f);
+  Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
+  Affine3f transform = viz::makeTransformToGlobal(Vec3f(0.0f,-1.0f,0.0f),
+                       Vec3f(-1.0f,0.0f,0.0f), Vec3f(0.0f,0.0f,-1.0f), cam_pos);
+
   Mat selection_mask = Mat::zeros(200, 320, CV_8UC3);
 
   double ticks = 0;
-
 
   while(1){
 
     double precTick = ticks;
     ticks = (double) cv::getTickCount();
-
     double dT = (ticks - precTick) / cv::getTickFrequency(); //seconds
 
     // frame capture
@@ -307,6 +336,8 @@ int main(int argc, char **argv){
       break;
     }
 
+    resize(input_frame, input_frame, Size(), 0.5, 0.5, INTER_CUBIC);
+
     // mirror for usability
     if(mirror){
       flip(input_frame, input_frame, +1);
@@ -333,6 +364,7 @@ int main(int argc, char **argv){
         for(li = targets; li != NULL; li = li->next){
           Target *target  = (Target*)li->data;
           target->SetROIOffset(roi_offset);
+          target->SetPlateScale(plate_scale);
           cout << "track init: " << target->TargetTrackInit(input_frame) << endl;
         }
         new_selection = 1;
@@ -361,6 +393,8 @@ int main(int argc, char **argv){
       bitwise_not(roi, roi);
     }
 
+    Vec3f target_position_angle(0, 0, 0);
+
     GList *li;
     for(li = targets; li != NULL; li = li->next){
       Target *target  = (Target*)li->data;
@@ -378,9 +412,15 @@ int main(int argc, char **argv){
         //motionDeblur.Deblur(target_crop, target_crop);
         resize(target_crop, target_crop, Size(), 4.0, 4.0, INTER_CUBIC);
         imshow("Target", target_crop);
+        cv::rectangle(input_frame, target->GetOrigin(), CV_RGB(0,255,0), 2);
+        Point2f angle_delta = target->GetTargetPositionAngle();
+        angle_delta = angle_delta/ARC_SECS_PER_RADIAN/1000;
+        cout << "Position Angle " << angle_delta << endl;
+        // motion compensation
+        cam_pose = Vec3f(-angle_delta.y, angle_delta.x, 0);
+        
+        target->DrawViz(input_frame);
       }
-
-      target->DrawViz(input_frame);
 
       kf.transitionMatrix.at<float>(2) = dT;
       kf.transitionMatrix.at<float>(9) = dT;
@@ -397,6 +437,13 @@ int main(int argc, char **argv){
       predRect.y = state.at<float>(1) - predRect.height / 2;
       cv::rectangle(input_frame, predRect, CV_RGB(255,0,0), 2);
 
+      viz::WCameraPosition cpw(0.5); // Coordinate axes
+      viz::WCameraPosition cpw_frustum(Vec2f(69.4 * PI / 180, 42.5 * PI / 180), input_frame); // Camera frustum
+
+      myWindow.showWidget("CPW", cpw, cam_pose);
+      myWindow.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose);
+      myWindow.spinOnce(1, true);
+
       meas.at<float>(0) = target_roi.x + target_roi.width / 2;
       meas.at<float>(1) = target_roi.y + target_roi.height / 2;
       meas.at<float>(2) = (float)target_roi.width;
@@ -404,6 +451,8 @@ int main(int argc, char **argv){
 
       kf.correct(meas); // Kalman Correction
     }
+
+
     
     imshow("TrackBox", input_frame);
     waitKey(33);

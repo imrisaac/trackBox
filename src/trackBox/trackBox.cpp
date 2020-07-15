@@ -67,7 +67,7 @@ void TrackBox::StructuredEdgeDetection(cv::InputArray src, cv::OutputArray dst){
 
   // Put vector of boxes into a glist
   for(int i = 0; i < (int)boxes_.size(); i++){
-    Target *new_target = new Target(boxes_[i], boxes_[i].tl(), 
+    Target *new_target = new Target(boxes_[i], boxes_[i], 
         params_.maximum_box_size);
     targets_ = g_list_append(targets_, new_target);
   }
