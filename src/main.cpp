@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <iostream>
 #include <string>
-
 #include <opencv2/core.hpp>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/videoio.hpp>
@@ -12,12 +11,6 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/viz/types.hpp>
 #include <opencv2/viz/vizcore.hpp>
-
-#define WITH_REALSENSE
-#ifdef WITH_REALSENSE
-#include <librealsense2/rs.hpp>
-#endif
-
 #include "target.h"
 #include "targetTrack.h"
 #include "trackBox.h"
@@ -26,6 +19,16 @@
 
 #include <glib.h>
 #include <algorithm>
+
+#define WITH_REALSENSE
+#ifdef WITH_REALSENSE
+#include <librealsense2/rs.hpp>
+#endif
+
+#define WITH_ROS
+#ifdef WITH_ROS
+#include <ros/ros.h>
+#endif
 
 #define ARC_SECS_PER_RADIAN 206265
 
@@ -127,6 +130,11 @@ int main(int argc, char **argv){
   GList *targets = NULL;
   LowPassFilterInt lpf_x(2.01, 30);
   LowPassFilterInt lpf_y(2.01, 30);
+
+#ifdef WITH_ROS
+  // ros::init(0, 0, "trackBox");
+  // ros::NodeHandle nh;
+#endif
 
   // Transition state matrix A
   cv::setIdentity(kf.transitionMatrix);
@@ -291,10 +299,12 @@ int main(int argc, char **argv){
   }
 
   int w, h;
-  #ifdef WITH_REALSENSE
-    rs2::frameset data;
-    rs2::frame depth;
-  #endif
+
+#ifdef WITH_REALSENSE
+  rs2::frameset data;
+  rs2::frame depth;
+#endif
+
   namedWindow("TrackBox", 0);
 
   setMouseCallback("TrackBox", onMouse, &input_frame);
