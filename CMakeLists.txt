@@ -10,6 +10,7 @@ find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 
+include_directories(/opt/ros/melodic/include /opt/ros/melodic/lib)
 # include_directories( ${PROJECT_SOURCE_DIR}/modules/jetson-utils)
 include_directories(/usr/include/gstreamer-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/include /usr/include/glib-2.0 /usr/include/libxml2 /usr/lib/aarch64-linux-gnu/glib-2.0/include/)
 
@@ -36,3 +37,5 @@ add_executable(trackBox src/main.cpp
                         )
 
 target_link_libraries(trackBox ${OpenCV_LIBS} ${realsense2_LIBRARY} ${GLIB_LDFLAGS})
+
+target_link_libraries(trackBox -I/opt/ros/melodic/include -L/opt/ros/melodic/lib -lroscpp -lrostime -lrosconsole -lroscpp_serialization)
