@@ -11,6 +11,7 @@
 #include <opencv2/video/video.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/viz/types.hpp>
+#include <opencv2/viz/vizcore.hpp>
 
 #define WITH_REALSENSE
 #ifdef WITH_REALSENSE
@@ -38,7 +39,8 @@ enum SourceType{
   V4L2_VID,
   REALSENSE,
   IMAGE_SEQUENCE,
-  VIDEO_SEQUENCE
+  VIDEO_SEQUENCE,
+  UDP_GAZEBO
 };
 
 Rect selection(0, 0, 0, 0);
@@ -210,6 +212,12 @@ int main(int argc, char **argv){
       cout << "input type detected as realsense camera" << endl;
       source_type = REALSENSE;
     }
+    input_key = string("udp");
+    found = input_type.find(input_key);
+    if(found != string::npos){
+      cout << "input type detected as udp gazebo" << endl;
+      source_type = UDP_GAZEBO;
+    }    
   }
 
   // Input initilization
@@ -270,6 +278,14 @@ int main(int argc, char **argv){
       break;
     case IMAGE_SEQUENCE:
     case VIDEO_SEQUENCE:
+      break;
+    case UDP_GAZEBO:
+      cap.open("udpsrc port=5600 ! "
+               "application/x-rtp ! "
+               "rtph264depay ! avdec_h264 ! "
+               "videoconvert ! video/x-raw ! " 
+               "appsink sync=true async=false drop=true");
+      break;
     default:
       break;
   }
@@ -327,6 +343,9 @@ int main(int argc, char **argv){
         input_frame =  Mat(Size(w, h), CV_8UC3, (void*)depth.get_data(), Mat::AUTO_STEP);
   #endif
         break;
+      case UDP_GAZEBO:
+        cap >> input_frame;
+        break;
       default:
         break;
     }
@@ -335,6 +354,8 @@ int main(int argc, char **argv){
       cout << "empty frame" << endl;
       break;
     }
+
+   // imshow("TrackBox", input_frame);
 
     resize(input_frame, input_frame, Size(), 0.5, 0.5, INTER_CUBIC);
 
@@ -452,8 +473,6 @@ int main(int argc, char **argv){
       kf.correct(meas); // Kalman Correction
     }
 
-
-    
     imshow("TrackBox", input_frame);
     waitKey(33);
   }

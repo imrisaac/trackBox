@@ -2,7 +2,7 @@
 #ifndef TARGET_H
 #define TARGET_H
 
-#include "opencv2/core.hpp"
+#include <opencv2/core.hpp>
 #include <opencv2/tracking.hpp>
 #include "targetTrack.h"
 
