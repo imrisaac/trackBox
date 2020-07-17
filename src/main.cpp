@@ -28,6 +28,12 @@
 #define WITH_ROS
 #ifdef WITH_ROS
 #include <ros/ros.h>
+#include <std_msgs/Int64.h>
+
+#include <geometry_msgs/PoseStamped.h>
+#include <mavros_msgs/CommandBool.h>
+#include <mavros_msgs/SetMode.h>
+#include <mavros_msgs/State.h>
 #endif
 
 #define ARC_SECS_PER_RADIAN 206265
@@ -45,6 +51,12 @@ enum SourceType{
   VIDEO_SEQUENCE,
   UDP_GAZEBO
 };
+
+mavros_msgs::State current_state;
+void state_cb(const mavros_msgs::State::ConstPtr& msg){
+  current_state = *msg;
+  cout << "state from mavros" << endl;
+}
 
 Rect selection(0, 0, 0, 0);
 Point selection_origin(0, 0);
@@ -132,8 +144,11 @@ int main(int argc, char **argv){
   LowPassFilterInt lpf_y(2.01, 30);
 
 #ifdef WITH_ROS
-  // ros::init(0, 0, "trackBox");
-  // ros::NodeHandle nh;
+  ros::init(argc, argv, "trackBox");
+  ros::NodeHandle nh;
+
+  ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
+      ("mavros/state", 10, state_cb);
 #endif
 
   // Transition state matrix A
@@ -293,6 +308,13 @@ int main(int argc, char **argv){
                "rtph264depay ! avdec_h264 ! "
                "videoconvert ! video/x-raw ! " 
                "appsink sync=true async=false drop=true");
+
+      // binned mode, pixels are double size
+      sensor_pixel_pitch_x = 1.4 * 2;
+      sensor_pixel_pitch_y = sensor_pixel_pitch_x;
+      lens_focal_length = 1.88;
+      plate_scale = Point2f((ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length,
+                            (ARC_SECS_PER_RADIAN * sensor_pixel_pitch_x) / lens_focal_length);
       break;
     default:
       break;
@@ -323,7 +345,15 @@ int main(int argc, char **argv){
 
   double ticks = 0;
 
+  ros::Publisher pub = nh.advertise<std_msgs::Int64>("/number", 1000);
+  int counter = 0;
+  ros::Rate rate(10);
+
   while(1){
+
+    ros::Publisher pub = nh.advertise<std_msgs::Int64>("/number", 1000);
+    int counter = 0;
+    ros::Rate rate(10);
 
     double precTick = ticks;
     ticks = (double) cv::getTickCount();
@@ -332,6 +362,7 @@ int main(int argc, char **argv){
     // frame capture
     switch(source_type){
       case JPG_IMG:
+
       case PNG_IMG:
         break;
       case MP4_VID:
@@ -485,6 +516,9 @@ int main(int argc, char **argv){
 
     imshow("TrackBox", input_frame);
     waitKey(33);
+#ifdef WITH_ROS
+    //ros::spinOnce();
+#endif
   }
 
   cout << "end" << endl;
